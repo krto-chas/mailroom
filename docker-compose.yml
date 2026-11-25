@@ -16,7 +16,7 @@ services:
     build: .
     env_file: .env
     ports:
-      - "127.0.0.1:8080:8080"   # nå via SSH-tunnel/WireGuard; exponera inte publikt
+      - "8080:8080"   # nå via SSH-tunnel/WireGuard; exponera inte publikt
     volumes:
       - appdata:/data           # token-cachen
     depends_on:
