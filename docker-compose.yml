@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mailroom
+      POSTGRES_PASSWORD: mailroom   # byt i produktion, eller kör secrets
+      POSTGRES_DB: mailroom
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mailroom"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"   # nå via SSH-tunnel/WireGuard; exponera inte publikt
+    volumes:
+      - appdata:/data           # token-cachen
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: python -m mailroom.worker
+    env_file: .env
+    volumes:
+      - appdata:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  appdata:
