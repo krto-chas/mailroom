@@ -1,9 +1,12 @@
-"""Minimalt API: hälsa, projekt, fynd, rättningar. Inget UI i v0.1 —
-resultatet syns i Outlook (kategorier) och via notiser; API:t är för
-administration och för att rätta klassificeringar (few-shot-underlaget)."""
+"""API + adminvy. Adminvyn (/) är en enkel sida för att granska
+klassificeringar, rätta fel (few-shot-underlaget), beta av fynd och
+registrera projekt — resultatet syns även i Outlook när shadow mode är av."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,7 +15,9 @@ from mailroom.config import settings
 from mailroom.db.models import Category, Email, Finding, FindingStatus, Project
 from mailroom.db.session import get_session, init_db
 
-app = FastAPI(title="mailroom", version="0.1.0")
+app = FastAPI(title="mailroom", version="0.2.0")
+
+ADMIN_PAGE = Path(__file__).parent / "static" / "admin.html"
 
 
 @app.on_event("startup")
@@ -26,6 +31,11 @@ def db_dep():
         yield db
     finally:
         db.close()
+
+
+@app.get("/", include_in_schema=False)
+def admin() -> FileResponse:
+    return FileResponse(ADMIN_PAGE, media_type="text/html")
 
 
 @app.get("/health")
@@ -66,6 +76,7 @@ def create_project(body: ProjectIn, db: Session = Depends(db_dep)) -> dict:
 
 @app.get("/emails")
 def list_emails(limit: int = 50, db: Session = Depends(db_dep)) -> list[dict]:
+    limit = min(limit, 500)
     rows = db.scalars(select(Email).order_by(Email.id.desc()).limit(limit)).all()
     return [
         {"id": e.id, "received_at": e.received_at.isoformat(), "sender": e.sender,

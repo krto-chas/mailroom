@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mailroom</title>
+<style>
+  :root{
+    --bg:#f4f6f5; --panel:#ffffff; --ink:#15211d; --muted:#5d6b66;
+    --line:#dde4e1; --accent:#0d5c4d; --accent-ink:#ffffff;
+    --sev1:#b3261e; --sev2:#8a6d1a; --sev3:#5d6b66;
+    --ok:#0d5c4d; --warn:#9a4b00;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  header{
+    display:flex; align-items:baseline; gap:14px;
+    padding:18px 24px 0;
+  }
+  header h1{font-size:20px; font-weight:650; letter-spacing:.3px; margin:0}
+  #mode{font-size:12px; padding:3px 9px; border-radius:3px; border:1px solid var(--line)}
+  #mode.shadow{background:#fdf3e3; border-color:#e6cf9d; color:var(--warn)}
+  #mode.live{background:#e7f2ee; border-color:#bcd9cf; color:var(--ok)}
+  header .spacer{flex:1}
+  header button{font-size:12px}
+
+  nav{display:flex; gap:2px; padding:14px 24px 0; border-bottom:1px solid var(--line)}
+  nav button{
+    border:1px solid var(--line); border-bottom:none; background:#eceeed;
+    padding:8px 18px; font-size:13.5px; cursor:pointer; color:var(--muted);
+    border-radius:6px 6px 0 0;
+  }
+  nav button.active{background:var(--panel); color:var(--ink); font-weight:600;
+    position:relative; top:1px}
+  nav .count{font-size:11px; color:var(--muted); margin-left:6px}
+
+  main{padding:18px 24px 60px; max-width:1240px}
+  section{display:none} section.visible{display:block}
+
+  .bar{display:flex; gap:10px; align-items:center; margin:0 0 12px; flex-wrap:wrap}
+  .bar label{font-size:12.5px; color:var(--muted)}
+  select,input[type=text]{
+    font:inherit; font-size:13px; padding:5px 8px; border:1px solid var(--line);
+    border-radius:4px; background:#fff; color:var(--ink);
+  }
+  select:focus,input:focus,button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+  button.act{
+    font:inherit; font-size:12.5px; padding:5px 12px; border-radius:4px; cursor:pointer;
+    border:1px solid var(--line); background:#fff; color:var(--ink);
+  }
+  button.act.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+  button.act:disabled{opacity:.45; cursor:default}
+
+  table{width:100%; border-collapse:collapse; background:var(--panel);
+    border:1px solid var(--line); border-radius:6px; overflow:hidden}
+  th{font-size:11.5px; text-align:left; color:var(--muted); font-weight:600;
+    padding:8px 10px; border-bottom:1px solid var(--line); background:#fafbfb}
+  td{padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tr.dirty td{background:#f3f8f6}
+  .when{white-space:nowrap; color:var(--muted); font-size:12px}
+  .from{font-size:12.5px; color:var(--muted); word-break:break-all}
+  .subj{font-weight:600}
+  .sum{color:var(--muted); font-size:12.5px; margin-top:2px; max-width:56ch}
+  .prio1{color:var(--sev1); font-weight:700}
+  .corr{font-size:11px; color:var(--ok)}
+  td .note{width:100%; margin-top:6px; display:none}
+  tr.dirty td .note{display:block}
+
+  .finding{
+    background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--sev3);
+    border-radius:4px; padding:12px 14px; margin-bottom:10px;
+  }
+  .finding.s1{border-left-color:var(--sev1)}
+  .finding.s2{border-left-color:var(--sev2)}
+  .finding .meta{font-size:12px; color:var(--muted); margin-bottom:4px}
+  .finding .why{color:var(--muted); font-size:13px; margin-top:4px}
+  .finding .row{display:flex; gap:8px; margin-top:10px; align-items:center}
+  .finding .status{font-size:11.5px; margin-left:auto; color:var(--muted)}
+
+  form.newproj{
+    background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:14px; display:grid; gap:10px; grid-template-columns:repeat(2,minmax(200px,1fr));
+    max-width:760px; margin-top:16px;
+  }
+  form.newproj h3{grid-column:1/-1; margin:0; font-size:14px}
+  form.newproj .wide{grid-column:1/-1}
+  form.newproj label{display:block; font-size:12px; color:var(--muted); margin-bottom:3px}
+  form.newproj input{width:100%}
+
+  #toast{
+    position:fixed; bottom:18px; left:24px; background:var(--ink); color:#fff;
+    padding:9px 16px; border-radius:4px; font-size:13px; opacity:0; transition:opacity .2s;
+    pointer-events:none;
+  }
+  #toast.show{opacity:.95}
+  .empty{color:var(--muted); padding:30px 0; text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>mailroom</h1>
+  <span id="mode">…</span>
+  <div class="spacer"></div>
+  <button class="act" onclick="loadAll()">Uppdatera</button>
+</header>
+
+<nav>
+  <button id="tab-mail" class="active" onclick="show('mail')">Mail<span class="count" id="n-mail"></span></button>
+  <button id="tab-findings" onclick="show('findings')">Fynd<span class="count" id="n-findings"></span></button>
+  <button id="tab-projects" onclick="show('projects')">Projekt<span class="count" id="n-projects"></span></button>
+</nav>
+
+<main>
+  <section id="sec-mail" class="visible">
+    <div class="bar">
+      <label>Kategori
+        <select id="f-cat" onchange="renderEmails()">
+          <option value="">alla</option>
+        </select>
+      </label>
+      <label>Projekt
+        <select id="f-proj" onchange="renderEmails()">
+          <option value="">alla</option>
+          <option value="__none__">utan projekt</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="f-nobrus" checked onchange="renderEmails()"> dölj brus</label>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:90px">Mottaget</th><th>Mail</th>
+        <th style="width:160px">Kategori</th><th style="width:170px">Projekt</th>
+        <th style="width:40px">Prio</th><th style="width:90px"></th>
+      </tr></thead>
+      <tbody id="emails"></tbody>
+    </table>
+  </section>
+
+  <section id="sec-findings">
+    <div class="bar">
+      <label>Status
+        <select id="f-status" onchange="loadFindings()">
+          <option value="ny" selected>ny</option>
+          <option value="sedd">sedd</option>
+          <option value="atgardad">åtgärdad</option>
+          <option value="avfärdad">avfärdad</option>
+          <option value="">alla</option>
+        </select>
+      </label>
+    </div>
+    <div id="findings"></div>
+  </section>
+
+  <section id="sec-projects">
+    <table>
+      <thead><tr><th>Slug</th><th>Namn</th><th>Alias</th><th>Domäner</th><th>Aktiv</th></tr></thead>
+      <tbody id="projects"></tbody>
+    </table>
+    <form class="newproj" onsubmit="return createProject(event)">
+      <h3>Nytt projekt</h3>
+      <div><label for="p-slug">Slug</label><input id="p-slug" required placeholder="stolmakaren"></div>
+      <div><label for="p-name">Namn</label><input id="p-name" required placeholder="Stolmakaren, Thule Fastighetsutveckling"></div>
+      <div class="wide"><label for="p-alias">Alias (kommaseparerade)</label><input id="p-alias" placeholder="Fokusrum, kaffestation"></div>
+      <div class="wide"><label for="p-dom">Avsändardomäner (kommaseparerade)</label><input id="p-dom" placeholder="thulefast.se"></div>
+      <div><button class="act primary">Skapa projekt</button></div>
+    </form>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const CATS = ["projektinfo","motesprotokoll","leverantorsfaktura","kundfaktura",
+              "forfragan","admin","privat","brus"];
+let emails = [], projects = [], findings = [];
+const edits = {};   // email_id -> {category, project_slug}
+
+const $ = id => document.getElementById(id);
+const esc = s => (s ?? "").toString().replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function toast(msg){
+  $("toast").textContent = msg; $("toast").classList.add("show");
+  setTimeout(() => $("toast").classList.remove("show"), 2200);
+}
+
+function show(name){
+  for (const s of ["mail","findings","projects"]){
+    $("sec-"+s).classList.toggle("visible", s===name);
+    $("tab-"+s).classList.toggle("active", s===name);
+  }
+}
+
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  if (!r.ok){
+    let msg = r.status + " " + r.statusText;
+    try { msg = (await r.json()).detail || msg } catch {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+async function loadAll(){
+  try{
+    const h = await api("/health");
+    const m = $("mode");
+    m.textContent = h.shadow_mode ? "shadow mode – inga mail rörs" : "live – sätter Outlook-kategorier";
+    m.className = h.shadow_mode ? "shadow" : "live";
+    projects = await api("/projects");
+    emails = await api("/emails?limit=200");
+    renderProjects(); renderFilters(); renderEmails();
+    await loadFindings();
+  }catch(e){ toast("Kunde inte hämta: " + e.message) }
+}
+
+function renderFilters(){
+  const cat = $("f-cat"), proj = $("f-proj");
+  const keep = [cat.value, proj.value];
+  cat.innerHTML = '<option value="">alla</option>' +
+    CATS.map(c => `<option>${c}</option>`).join("");
+  proj.innerHTML = '<option value="">alla</option><option value="__none__">utan projekt</option>' +
+    projects.map(p => `<option value="${esc(p.slug)}">${esc(p.slug)}</option>`).join("");
+  cat.value = keep[0]; proj.value = keep[1];
+}
+
+function renderEmails(){
+  const fc = $("f-cat").value, fp = $("f-proj").value, nobrus = $("f-nobrus").checked;
+  const rows = emails.filter(e =>
+    (!fc || e.category === fc) &&
+    (!fp || (fp === "__none__" ? !e.project : e.project === fp)) &&
+    (!nobrus || e.category !== "brus"));
+  $("n-mail").textContent = "(" + rows.length + ")";
+  const projOpts = slug => '<option value="">–</option>' +
+    projects.map(p => `<option value="${esc(p.slug)}" ${p.slug===slug?"selected":""}>${esc(p.slug)}</option>`).join("");
+  const catOpts = cat => '<option value="">–</option>' +
+    CATS.map(c => `<option ${c===cat?"selected":""}>${c}</option>`).join("");
+
+  $("emails").innerHTML = rows.length ? rows.map(e => `
+    <tr id="row-${e.id}" class="${edits[e.id] ? "dirty" : ""}">
+      <td class="when">${esc((e.received_at||"").slice(0,16).replace("T"," "))}</td>
+      <td>
+        <div class="subj">${esc(e.subject) || "(utan ämne)"}</div>
+        <div class="from">${esc(e.sender)} ${e.corrected ? '<span class="corr">· rättad</span>' : ""}</div>
+        <div class="sum">${esc(e.summary)}</div>
+      </td>
+      <td><select onchange="mark(${e.id},'category',this.value)">${catOpts(e.category)}</select></td>
+      <td><select onchange="mark(${e.id},'project_slug',this.value)">${projOpts(e.project)}</select>
+          <input class="note" type="text" id="note-${e.id}" placeholder="regel/notering (valfritt)"></td>
+      <td class="${e.priority===1?"prio1":""}">${e.priority ?? ""}</td>
+      <td><button class="act primary" id="save-${e.id}" disabled
+            onclick="saveCorrection(${e.id})">Rätta</button></td>
+    </tr>`).join("")
+    : '<tr><td colspan="6" class="empty">Inga mail matchar filtret.</td></tr>';
+  for (const id of Object.keys(edits)){
+    const b = $("save-"+id); if (b) b.disabled = false;
+  }
+}
+
+function mark(id, field, value){
+  edits[id] = edits[id] || {};
+  edits[id][field] = value || null;
+  const row = $("row-"+id), btn = $("save-"+id);
+  if (row) row.classList.add("dirty");
+  if (btn) btn.disabled = false;
+}
+
+async function saveCorrection(id){
+  const body = { ...edits[id], note: $("note-"+id)?.value || "" };
+  try{
+    await api(`/emails/${id}/correct`, {method:"POST",
+      headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
+    delete edits[id];
+    toast("Rättning sparad – används som facit framöver");
+    emails = await api("/emails?limit=200");
+    renderEmails();
+  }catch(e){ toast("Rättning misslyckades: " + e.message) }
+}
+
+async function loadFindings(){
+  const st = $("f-status").value;
+  try{
+    findings = await api("/findings" + (st ? "?status="+encodeURIComponent(st) : ""));
+  }catch(e){ toast("Kunde inte hämta fynd: " + e.message); return }
+  $("n-findings").textContent = "(" + findings.length + ")";
+  const bySlug = Object.fromEntries(projects.map(p => [p.id, p.slug]));
+  const emailById = Object.fromEntries(emails.map(e => [e.id, e]));
+  $("findings").innerHTML = findings.length ? findings.map(f => {
+    const mail = emailById[f.email_id];
+    return `
+    <div class="finding s${f.severity}">
+      <div class="meta">
+        ${f.project_id ? esc(bySlug[f.project_id] || "") + " · " : ""}${esc(f.source)}
+        ${f.locator ? " · " + esc(f.locator) : ""}
+        ${mail ? " · ur: " + esc(mail.subject) : ""}
+      </div>
+      <div>${esc(f.text)}</div>
+      ${f.why ? `<div class="why">${esc(f.why)}</div>` : ""}
+      <div class="row">
+        <button class="act" onclick="setFinding(${f.id},'sedd')">Sedd</button>
+        <button class="act" onclick="setFinding(${f.id},'atgardad')">Åtgärdad</button>
+        <button class="act" onclick="setFinding(${f.id},'avfärdad')">Avfärda</button>
+        <span class="status">severity ${f.severity} · ${esc(f.status)}</span>
+      </div>
+    </div>`;
+  }).join("") : '<div class="empty">Inga fynd med den statusen.</div>';
+}
+
+async function setFinding(id, status){
+  try{
+    await api(`/findings/${id}/status?status=${encodeURIComponent(status)}`, {method:"POST"});
+    await loadFindings();
+  }catch(e){ toast("Kunde inte uppdatera: " + e.message) }
+}
+
+function renderProjects(){
+  $("n-projects").textContent = "(" + projects.length + ")";
+  $("projects").innerHTML = projects.length ? projects.map(p => `
+    <tr><td>${esc(p.slug)}</td><td>${esc(p.name)}</td>
+        <td>${esc((p.aliases||[]).join(", "))}</td>
+        <td>${esc((p.sender_domains||[]).join(", "))}</td>
+        <td>${p.active ? "ja" : "nej"}</td></tr>`).join("")
+    : '<tr><td colspan="5" class="empty">Inga projekt ännu – skapa det första nedan.</td></tr>';
+}
+
+async function createProject(ev){
+  ev.preventDefault();
+  const split = v => v.split(",").map(s => s.trim()).filter(Boolean);
+  const body = {
+    slug: $("p-slug").value.trim(), name: $("p-name").value.trim(),
+    aliases: split($("p-alias").value), sender_domains: split($("p-dom").value),
+  };
+  try{
+    await api("/projects", {method:"POST",
+      headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
+    toast("Projekt skapat – nya mail matchas mot det direkt");
+    ev.target.reset();
+    projects = await api("/projects");
+    renderProjects(); renderFilters(); renderEmails();
+  }catch(e){ toast("Kunde inte skapa: " + e.message) }
+  return false;
+}
+
+loadAll();
+</script>
+</body>
+</html>
